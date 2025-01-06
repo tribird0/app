@@ -1,67 +1,81 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
 
-# Set page configuration
-st.set_page_config(page_title="Binance Futures PNL Analysis", layout="wide")
+# Title and description
+st.title("Binance Futures Calculator")
+st.write("Calculate Liquidation Price and PNL for your Binance Futures positions.")
 
-# Title
-st.title("Binance Futures PNL Analysis")
+# Input widgets
+st.subheader("Input Parameters")
 
-# Upload CSV file
-uploaded_file = st.file_uploader("Upload your trade data CSV", type=["csv"])
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    
-    # Data cleaning and transformation
-    df['Trade Time'] = pd.to_datetime(df['Trade Time'])
-    df['PNL'] = df.apply(
-        lambda row: (row['Exit Price'] - row['Entry Price']) * row['Quantity'] * row['Leverage']
-        if row['Position Side'] == 'Long'
-        else (row['Entry Price'] - row['Exit Price']) * row['Quantity'] * row['Leverage'],
-        axis=1
-    )
-    df.sort_values('Trade Time', inplace=True)
-    df['Cumulative PNL'] = df['PNL'].cumsum()
-    
-    # Sidebar filters
-    st.sidebar.header('Filters')
-    start_date, end_date = st.sidebar.date_input('Select Date Range', (df['Trade Time'].min(), df['Trade Time'].max()))
-    symbol = st.sidebar.selectbox('Select Symbol', df['Symbol'].unique())
-    position_side = st.sidebar.radio('Select Position Side', ['All', 'Long', 'Short'])
-    
-    # Apply filters
-    filtered_df = df[(df['Trade Time'] >= start_date) & (df['Trade Time'] <= end_date)]
-    filtered_df = filtered_df[filtered_df['Symbol'] == symbol]
-    if position_side != 'All':
-        filtered_df = filtered_df[filtered_df['Position Side'] == position_side]
-    
-    # Visualizations
-    st.subheader('PNL Distribution')
-    fig_histogram = px.histogram(filtered_df, x='PNL', nbins=30, title='PNL Distribution')
-    st.plotly_chart(fig_histogram)
-    
-    st.subheader('Cumulative PNL Over Time')
-    fig_cumulative = px.line(filtered_df, x='Trade Time', y='Cumulative PNL', title='Cumulative PNL Over Time')
-    st.plotly_chart(fig_cumulative)
-    
-    st.subheader('Profit vs. Loss')
-    profit = filtered_df[filtered_df['PNL'] > 0]['PNL'].sum()
-    loss = filtered_df[filtered_df['PNL'] < 0]['PNL'].sum()
-    fig_pie = px.pie(values=[profit, loss], names=['Profit', 'Loss'], title='Profit vs. Loss')
-    st.plotly_chart(fig_pie)
-    
-    st.subheader('PNL by Symbol')
-    fig_symbol = px.bar(filtered_df.groupby('Symbol')['PNL'].sum().reset_index(), x='Symbol', y='PNL', title='PNL by Symbol')
-    st.plotly_chart(fig_symbol)
-    
-    # Key Metrics
-    st.subheader('Key Metrics')
-    total_pnl = filtered_df['PNL'].sum()
-    average_pnl = filtered_df['PNL'].mean()
-    win_loss_ratio = len(filtered_df[filtered_df['PNL'] > 0]) / len(filtered_df[filtered_df['PNL'] < 0]) if len(filtered_df[filtered_df['PNL'] < 0]) > 0 else float('inf')
-    st.write(f'Total PNL: ${total_pnl:.2f}')
-    st.write(f'Average PNL: ${average_pnl:.2f}')
-    st.write(f'Win/Loss Ratio: {win_loss_ratio:.2f}')
+# Position type
+position = st.selectbox("Position", ["Long", "Short"])
+
+# Margin mode
+margin_mode = st.selectbox("Margin Mode", ["Isolated", "Cross"])
+
+# Leverage
+leverage = st.number_input("Leverage", min_value=1.0, value=12.0)
+
+# Wallet balance (only for Cross margin)
+if margin_mode == "Cross":
+    wallet_balance = st.number_input("Wallet Balance", min_value=0.0, value=1000.0)
 else:
-    st.info('Please upload a CSV file.')
+    wallet_balance = None
+
+# Contract type
+contract_type = st.selectbox("Contract Type", ["USDS-M Futures", "COIN-M Futures"])
+
+# Entry and Exit prices
+entry_price = st.number_input("Entry Price", min_value=0.0, value=50000.0)
+exit_price = st.number_input("Exit Price", min_value=0.0, value=55000.0)
+
+# Maintenance margin rate
+maintenance_margin_rate = st.number_input("Maintenance Margin Rate (%)", min_value=0.0, value=0.40) / 100
+
+# Maintenance amount (optional)
+maintenance_amount = st.number_input("Maintenance Amount (optional)", min_value=0.0, value=0.0)
+
+# Calculation functions
+def calculate_liquidation_price(position, entry_price, leverage, maintenance_margin_rate, maintenance_amount=None):
+    if maintenance_amount:
+        if position == "Long":
+            liquidation_price = (entry_price * (1 - maintenance_margin_rate)) / (1 + (maintenance_amount / entry_price))
+        else:
+            liquidation_price = (entry_price * (1 + maintenance_margin_rate)) / (1 - (maintenance_amount / entry_price))
+    else:
+        if position == "Long":
+            liquidation_price = (entry_price * (1 - maintenance_margin_rate)) / (1 + (maintenance_margin_rate * (leverage - 1)))
+        else:
+            liquidation_price = (entry_price * (1 + maintenance_margin_rate)) / (1 - (maintenance_margin_rate * (leverage - 1)))
+    return liquidation_price
+
+def calculate_pnl(position, contract_type, entry_price, exit_price, leverage):
+    if contract_type == "USDS-M Futures":
+        if position == "Long":
+            pnl = ((exit_price / entry_price) - 1) * leverage
+        else:
+            pnl = (1 - (entry_price / exit_price)) * leverage
+    else:
+        if position == "Long":
+            pnl = ((exit_price - entry_price) / entry_price) * leverage
+        else:
+            pnl = ((entry_price - exit_price) / entry_price) * leverage
+    return pnl
+
+# Calculate and display results
+st.subheader("Results")
+
+try:
+    liquidation_price = calculate_liquidation_price(position, entry_price, leverage, maintenance_margin_rate, maintenance_amount)
+    pnl = calculate_pnl(position, contract_type, entry_price, exit_price, leverage)
+    
+    st.write(f"Liquidation Price: **{liquidation_price:.2f}**")
+    st.write(f"PNL: **{pnl:.2%}**")
+except ZeroDivisionError:
+    st.write("Error: Division by zero occurred. Please check your inputs.")
+except:
+    st.write("An error occurred. Please verify your input values.")
+
+# Additional notes
+st.write("Note: PNL is displayed as a percentage for simplicity.")
+st.write("Disclaimer: This calculator is for educational purposes only.")
