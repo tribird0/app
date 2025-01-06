@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
 # Function to calculate PNL and Fee analysis
@@ -151,12 +151,19 @@ if uploaded_file is not None:
         st.write("#### PNL Over Time")
         pnl_over_time = analysis_results['Daily PNL'].reset_index()
         pnl_over_time.columns = ['Date', 'PNL']
-        fig = px.line(pnl_over_time, x='Date', y='PNL', title="Daily PNL Over Time")
-        st.plotly_chart(fig, use_container_width=True)
+        plt.figure(figsize=(10, 6))
+        plt.plot(pnl_over_time['Date'], pnl_over_time['PNL'], marker='o')
+        plt.title("Daily PNL Over Time")
+        plt.xlabel("Date")
+        plt.ylabel("PNL (USD)")
+        plt.grid(True)
+        st.pyplot(plt)
     with col2:
         st.write("#### Fee Breakdown")
         fee_breakdown = pd.DataFrame(list(analysis_results['Fee Breakdown'].items()), columns=['Fee Type', 'Amount'])
-        fig = px.pie(fee_breakdown, values='Amount', names='Fee Type', title="Fee Breakdown")
-        st.plotly_chart(fig, use_container_width=True)
+        plt.figure(figsize=(6, 6))
+        plt.pie(fee_breakdown['Amount'], labels=fee_breakdown['Fee Type'], autopct='%1.1f%%', startangle=140)
+        plt.title("Fee Breakdown")
+        st.pyplot(plt)
 else:
     st.write("Please upload a CSV file to get started.")
