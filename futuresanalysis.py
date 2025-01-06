@@ -1,61 +1,70 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-# Title of the app
-st.title('Futures Trade PNL Analysis')
+# Set page configuration
+st.set_page_config(page_title="Futures PNL Analysis", layout="wide")
+
+# Title and subtitle
+st.title("Futures Trade PNL Analysis")
+st.subheader("Analyze your trading performance with this interactive tool.")
+
+# Instructions and sample CSV download
+st.markdown("[Download Sample CSV](sample_trades.csv)")
 
 # Upload CSV file
 uploaded_file = st.file_uploader("Upload your trade data CSV", type=["csv"])
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
+    df['Trade Time'] = pd.to_datetime(df['Trade Time'])
+    df['PNL'] = df.apply(
+        lambda row: (row['Exit Price'] - row['Entry Price']) * row['Quantity'] * row['Leverage']
+        if row['Position Side'] == 'Long'
+        else (row['Entry Price'] - row['Exit Price']) * row['Quantity'] * row['Leverage'],
+        axis=1
+    )
+    df.sort_values('Trade Time', inplace=True)
+    df['Cumulative PNL'] = df['PNL'].cumsum()
     
-    # Display raw data
-    st.subheader('Raw Data')
-    st.dataframe(df)
+    # Sidebar filters
+    st.sidebar.header('Filters')
+    start_date, end_date = st.sidebar.date_input('Select Date Range', (df['Trade Time'].min(), df['Trade Time'].max()))
+    symbol = st.sidebar.selectbox('Select Symbol', df['Symbol'].unique())
+    position_side = st.sidebar.radio('Select Position Side', ['All', 'Long', 'Short'])
     
-    # Calculate PNL
-    df['PNL'] = (df['Exit Price'] - df['Entry Price']) * df['Quantity']
+    # Apply filters
+    filtered_df = df[(df['Trade Time'] >= start_date) & (df['Trade Time'] <= end_date)]
+    filtered_df = filtered_df[filtered_df['Symbol'] == symbol]
+    if position_side != 'All':
+        filtered_df = filtered_df[filtered_df['Position Side'] == position_side]
     
-    # Display Total PNL
-    st.subheader('Total PNL')
-    total_pnl = df['PNL'].sum()
-    st.write(f'${total_pnl:.2f}')
-    
-    # PNL Distribution
+    # Visualizations
     st.subheader('PNL Distribution')
-    fig, ax = plt.subplots()
-    df['PNL'].hist(ax=ax, bins=20)
-    ax.set_xlabel('Profit and Loss')
-    ax.set_ylabel('Number of Trades')
-    st.pyplot(fig)
+    fig_histogram = px.histogram(filtered_df, x='PNL', nbins=30, title='PNL Distribution')
+    st.plotly_chart(fig_histogram)
     
-    # Cumulative PNL over time
-    if 'Trade Date' in df.columns:
-        df['Trade Date'] = pd.to_datetime(df['Trade Date'])
-        df.sort_values('Trade Date', inplace=True)
-        df['Cumulative PNL'] = df['PNL'].cumsum()
-        
-        st.subheader('Cumulative PNL Over Time')
-        fig, ax = plt.subplots()
-        df.plot(x='Trade Date', y='Cumulative PNL', ax=ax)
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Cumulative PNL')
-        st.pyplot(fig)
-    else:
-        st.warning("No 'Trade Date' column found for time series analysis.")
+    st.subheader('Cumulative PNL Over Time')
+    fig_cumulative = px.line(filtered_df, x='Trade Time', y='Cumulative PNL', title='Cumulative PNL Over Time')
+    st.plotly_chart(fig_cumulative)
     
-    # Filter trades by PNL
-    st.subheader('Filter Trades by PNL')
-    pnl_min, pnl_max = st.slider('Select PNL range', 
-                                 float(df['PNL'].min()), float(df['PNL'].max()), 
-                                 (float(df['PNL'].min()), float(df['PNL'].max())))
-    filtered_df = df[(df['PNL'] >= pnl_min) & (df['PNL'] <= pnl_max)]
+    st.subheader('Profit vs. Loss')
+    profit = filtered_df[filtered_df['PNL'] > 0]['PNL'].sum()
+    loss = filtered_df[filtered_df['PNL'] < 0]['PNL'].sum()
+    fig_pie = px.pie(values=[profit, loss], names=['Profit', 'Loss'], title='Profit vs. Loss')
+    st.plotly_chart(fig_pie)
+    
+    # Key Metrics
+    st.subheader('Key Metrics')
+    total_pnl = filtered_df['PNL'].sum()
+    average_pnl = filtered_df['PNL'].mean()
+    win_loss_ratio = len(filtered_df[filtered_df['PNL'] > 0]) / len(filtered_df[filtered_df['PNL'] < 0]) if len(filtered_df[filtered_df['PNL'] < 0]) > 0 else float('inf')
+    st.write(f'Total PNL: ${total_pnl:.2f}')
+    st.write(f'Average PNL: ${average_pnl:.2f}')
+    st.write(f'Win/Loss Ratio: {win_loss_ratio:.2f}')
+    
+    # Trade Details
+    st.subheader('Trade Details')
     st.dataframe(filtered_df)
-    
-    # PNL Statistics
-    st.subheader('PNL Statistics')
-    st.write(df['PNL'].describe())
 else:
     st.info('Please upload a CSV file.')
