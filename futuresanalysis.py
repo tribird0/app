@@ -1,89 +1,61 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 
-# Function to calculate Binance-like analysis
-def calculate_binance_analysis(df):
-    # Normalize column names
-    df.columns = df.columns.str.strip()  # Remove extra spaces
-    df.columns = df.columns.str.lower()  # Convert to lowercase
-    df.columns = df.columns.str.replace(' ', '_')  # Replace spaces with underscores
+# Title of the app
+st.title('Futures Trade PNL Analysis')
 
-    # Ensure required columns exist
-    required_columns = ['time(utc)', 'realized_profit', 'amount', 'fee', 'funding_fee', 'balance']
-    for col in required_columns:
-        if col not in df.columns:
-            df[col] = 0  # Default to 0 if column is missing
-
-    # Convert 'Time(UTC)' to datetime
-    df['time(utc)'] = pd.to_datetime(df['time(utc)'])
-
-    # Calculate Account Balance
-    account_balance = df['balance'].iloc[-1]  # Latest balance
-
-    # Calculate Realized PNL
-    realized_pnl = df['realized_profit'].sum()
-
-    # Calculate Funding Fees
-    total_funding_fee = df['funding_fee'].sum()
-
-    # Calculate Transaction Fees
-    total_transaction_fee = df['fee'].sum()
-
-    # Calculate Trading Activity
-    today = datetime.utcnow().date()
-    last_7d = today - timedelta(days=7)
-    last_30d = today - timedelta(days=30)
-
-    daily_trading_volume = df[df['time(utc)'].dt.date == today]['amount'].sum()
-    weekly_trading_volume = df[df['time(utc)'].dt.date >= last_7d]['amount'].sum()
-    monthly_trading_volume = df[df['time(utc)'].dt.date >= last_30d]['amount'].sum()
-
-    # Return the results as a dictionary
-    return {
-        "Account Balance": account_balance,
-        "Realized PNL": realized_pnl,
-        "Total Funding Fee": total_funding_fee,
-        "Total Transaction Fee": total_transaction_fee,
-        "Daily Trading Volume": daily_trading_volume,
-        "Weekly Trading Volume": weekly_trading_volume,
-        "Monthly Trading Volume": monthly_trading_volume
-    }
-
-# Streamlit App
-st.title("Binance Futures Wallet Balance Analysis")
-
-# File upload
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+# Upload CSV file
+uploaded_file = st.file_uploader("Upload your trade data CSV", type=["csv"])
 
 if uploaded_file is not None:
-    # Read the CSV file with encoding='utf-8-sig' to handle BOM
-    df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
+    df = pd.read_csv(uploaded_file)
     
-    # Display the uploaded data
-    st.write("Uploaded Data:")
-    st.write(df)
+    # Display raw data
+    st.subheader('Raw Data')
+    st.dataframe(df)
     
-    # Calculate Binance-like Analysis
-    analysis_results = calculate_binance_analysis(df)
+    # Calculate PNL
+    df['PNL'] = (df['Exit Price'] - df['Entry Price']) * df['Quantity']
     
-    # Display Account Balance
-    st.write("### Account Balance")
-    st.write(f"**Current Balance:** {analysis_results['Account Balance']:.2f} USD")
-
-    # Display PNL Analysis
-    st.write("### PNL Analysis")
-    st.write(f"**Realized PNL:** {analysis_results['Realized PNL']:.2f} USD")
-
-    # Display Fee Analysis
-    st.write("### Fee Analysis")
-    st.write(f"**Total Funding Fee:** {analysis_results['Total Funding Fee']:.2f} USD")
-    st.write(f"**Total Transaction Fee:** {analysis_results['Total Transaction Fee']:.2f} USD")
-
-    # Display Trading Activity
-    st.write("### Trading Activity")
-    st.write(f"**Daily Trading Volume:** {analysis_results['Daily Trading Volume']:.2f} USD")
-    st.write(f"**Weekly Trading Volume:** {analysis_results['Weekly Trading Volume']:.2f} USD")
-    st.write(f"**Monthly Trading Volume:** {analysis_results['Monthly Trading Volume']:.2f} USD")
+    # Display Total PNL
+    st.subheader('Total PNL')
+    total_pnl = df['PNL'].sum()
+    st.write(f'${total_pnl:.2f}')
+    
+    # PNL Distribution
+    st.subheader('PNL Distribution')
+    fig, ax = plt.subplots()
+    df['PNL'].hist(ax=ax, bins=20)
+    ax.set_xlabel('Profit and Loss')
+    ax.set_ylabel('Number of Trades')
+    st.pyplot(fig)
+    
+    # Cumulative PNL over time
+    if 'Trade Date' in df.columns:
+        df['Trade Date'] = pd.to_datetime(df['Trade Date'])
+        df.sort_values('Trade Date', inplace=True)
+        df['Cumulative PNL'] = df['PNL'].cumsum()
+        
+        st.subheader('Cumulative PNL Over Time')
+        fig, ax = plt.subplots()
+        df.plot(x='Trade Date', y='Cumulative PNL', ax=ax)
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Cumulative PNL')
+        st.pyplot(fig)
+    else:
+        st.warning("No 'Trade Date' column found for time series analysis.")
+    
+    # Filter trades by PNL
+    st.subheader('Filter Trades by PNL')
+    pnl_min, pnl_max = st.slider('Select PNL range', 
+                                 float(df['PNL'].min()), float(df['PNL'].max()), 
+                                 (float(df['PNL'].min()), float(df['PNL'].max())))
+    filtered_df = df[(df['PNL'] >= pnl_min) & (df['PNL'] <= pnl_max)]
+    st.dataframe(filtered_df)
+    
+    # PNL Statistics
+    st.subheader('PNL Statistics')
+    st.write(df['PNL'].describe())
 else:
-    st.write("Please upload a CSV file to get started.")
+    st.info('Please upload a CSV file.')
