@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 
 # Function to calculate PNL and Fee analysis
 def calculate_pnl_and_fee_analysis(df):
@@ -8,71 +9,54 @@ def calculate_pnl_and_fee_analysis(df):
     df.columns = df.columns.str.lower()  # Convert to lowercase
     df.columns = df.columns.str.replace(' ', '_')  # Replace spaces with underscores
 
-    # Calculate Total Profit
-    total_profit = df[df['realized_profit'] > 0]['realized_profit'].sum()
-    
-    # Calculate Total Loss
-    total_loss = df[df['realized_profit'] < 0]['realized_profit'].sum()
-    
-    # Calculate Net Profit/Loss
-    net_pnl = total_profit + total_loss
-    
-    # Calculate Trading Volume
-    trading_volume = df['amount'].sum()
-    
-    # Calculate Win Rate
-    winning_trades = df[df['realized_profit'] > 0].shape[0]
-    total_trades = df.shape[0]
-    win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0
-    
-    # Calculate Winning Days, Losing Days, and Breakeven Days
-    df['date'] = pd.to_datetime(df['time(utc)']).dt.date
-    daily_pnl = df.groupby('date')['realized_profit'].sum()
-    
-    winning_days = (daily_pnl > 0).sum()
-    losing_days = (daily_pnl < 0).sum()
-    breakeven_days = (daily_pnl == 0).sum()
-    
-    # Calculate Average Profit and Average Loss
-    average_profit = total_profit / winning_trades if winning_trades > 0 else 0
-    average_loss = total_loss / (total_trades - winning_trades) if (total_trades - winning_trades) > 0 else 0
-    
-    # Calculate Profit/Loss Ratio
-    profit_loss_ratio = abs(average_profit / average_loss) if average_loss != 0 else 0
+    # Ensure required columns exist
+    required_columns = ['realized_profit', 'amount', 'fee', 'funding_fee', 'time(utc)']
+    for col in required_columns:
+        if col not in df.columns:
+            df[col] = 0  # Default to 0 if column is missing
 
-    # Calculate Funding Fees
-    if 'funding_fee' in df.columns:
-        total_funding_fee = df['funding_fee'].sum()
-        total_received_funding_fee = df[df['funding_fee'] > 0]['funding_fee'].sum()
-        total_paid_funding_fee = df[df['funding_fee'] < 0]['funding_fee'].sum()
-    else:
-        total_funding_fee = 0
-        total_received_funding_fee = 0
-        total_paid_funding_fee = 0
+    # Convert 'Time(UTC)' to datetime
+    df['time(utc)'] = pd.to_datetime(df['time(utc)'])
 
-    # Calculate Transaction Fees
-    if 'fee' in df.columns:
-        total_transaction_fee = df['fee'].sum()
-    else:
-        total_transaction_fee = 0
+    # Calculate Trading Costs (Commissions + Funding Fees + Liquidation Fees)
+    # Assuming liquidation fees are in a column named 'liquidation_fee'
+    if 'liquidation_fee' not in df.columns:
+        df['liquidation_fee'] = 0  # Default to 0 if column is missing
+
+    trading_costs = df['fee'] + df['funding_fee'] + df['liquidation_fee']
+
+    # Adjust Realized Profit by deducting Trading Costs
+    df['adjusted_realized_profit'] = df['realized_profit'] - trading_costs
+
+    # Calculate Today's PNL
+    today = datetime.utcnow().date()
+    today_pnl = df[df['time(utc)'].dt.date == today]['adjusted_realized_profit'].sum()
+    today_pnl_percentage = (today_pnl / df[df['time(utc)'].dt.date == today]['amount'].sum()) * 100 if df[df['time(utc)'].dt.date == today]['amount'].sum() != 0 else 0
+
+    # Calculate 7D PNL
+    last_7d = today - timedelta(days=7)
+    last_7d_pnl = df[df['time(utc)'].dt.date >= last_7d]['adjusted_realized_profit'].sum()
+    last_7d_pnl_percentage = (last_7d_pnl / df[df['time(utc)'].dt.date >= last_7d]['amount'].sum()) * 100 if df[df['time(utc)'].dt.date >= last_7d]['amount'].sum() != 0 else 0
+
+    # Calculate 30D PNL
+    last_30d = today - timedelta(days=30)
+    last_30d_pnl = df[df['time(utc)'].dt.date >= last_30d]['adjusted_realized_profit'].sum()
+    last_30d_pnl_percentage = (last_30d_pnl / df[df['time(utc)'].dt.date >= last_30d]['amount'].sum()) * 100 if df[df['time(utc)'].dt.date >= last_30d]['amount'].sum() != 0 else 0
+
+    # Calculate Lifetime PNL
+    lifetime_pnl = df['adjusted_realized_profit'].sum()
+    lifetime_pnl_percentage = (lifetime_pnl / df['amount'].sum()) * 100 if df['amount'].sum() != 0 else 0
 
     # Return the results as a dictionary
     return {
-        "Total Profit": total_profit,
-        "Total Loss": total_loss,
-        "Net Profit/Loss": net_pnl,
-        "Trading Volume": trading_volume,
-        "Win Rate": win_rate,
-        "Winning Days": winning_days,
-        "Losing Days": losing_days,
-        "Breakeven Days": breakeven_days,
-        "Average Profit": average_profit,
-        "Average Loss": average_loss,
-        "Profit/Loss Ratio": profit_loss_ratio,
-        "Total Funding Fee": total_funding_fee,
-        "Total Received Funding Fee": total_received_funding_fee,
-        "Total Paid Funding Fee": total_paid_funding_fee,
-        "Total Transaction Fee": total_transaction_fee
+        "Today's PNL (%)": today_pnl_percentage,
+        "Today's PNL (USD)": today_pnl,
+        "7D PNL (%)": last_7d_pnl_percentage,
+        "7D PNL (USD)": last_7d_pnl,
+        "30D PNL (%)": last_30d_pnl_percentage,
+        "30D PNL (USD)": last_30d_pnl,
+        "Lifetime PNL (%)": lifetime_pnl_percentage,
+        "Lifetime PNL (USD)": lifetime_pnl
     }
 
 # Streamlit App
@@ -93,24 +77,10 @@ if uploaded_file is not None:
     analysis_results = calculate_pnl_and_fee_analysis(df)
     
     # Display PNL Analysis
-    st.write("### Profit and Loss Analysis")
-    st.write(f"**Total Profit:** {analysis_results['Total Profit']:.2f} USD")
-    st.write(f"**Total Loss:** {analysis_results['Total Loss']:.2f} USD")
-    st.write(f"**Net Profit/Loss:** {analysis_results['Net Profit/Loss']:.2f} USD")
-    st.write(f"**Trading Volume:** {analysis_results['Trading Volume']:.2f}")
-    st.write(f"**Win Rate:** {analysis_results['Win Rate']:.2f} %")
-    st.write(f"**Winning Days:** {analysis_results['Winning Days']} Days")
-    st.write(f"**Losing Days:** {analysis_results['Losing Days']} Days")
-    st.write(f"**Breakeven Days:** {analysis_results['Breakeven Days']} Days")
-    st.write(f"**Average Profit:** {analysis_results['Average Profit']:.2f} USD")
-    st.write(f"**Average Loss:** {analysis_results['Average Loss']:.2f} USD")
-    st.write(f"**Profit/Loss Ratio:** {analysis_results['Profit/Loss Ratio']:.2f}")
-
-    # Display Funding and Transaction Fee Analysis
-    st.write("### Funding and Transaction Fee Analysis")
-    st.write(f"**Total Funding Fee:** {analysis_results['Total Funding Fee']:.2f} USD")
-    st.write(f"**Total Received Funding Fee:** {analysis_results['Total Received Funding Fee']:.2f} USD")
-    st.write(f"**Total Paid Funding Fee:** {analysis_results['Total Paid Funding Fee']:.2f} USD")
-    st.write(f"**Total Transaction Fee:** {analysis_results['Total Transaction Fee']:.2f} USD")
+    st.write("### PNL Analysis")
+    st.write(f"**Today's PNL:** {analysis_results['Today\'s PNL (%)']:.2f}% ({analysis_results['Today\'s PNL (USD)']:.2f} USD)")
+    st.write(f"**7D PNL:** {analysis_results['7D PNL (%)']:.2f}% ({analysis_results['7D PNL (USD)']:.2f} USD)")
+    st.write(f"**30D PNL:** {analysis_results['30D PNL (%)']:.2f}% ({analysis_results['30D PNL (USD)']:.2f} USD)")
+    st.write(f"**Lifetime PNL:** {analysis_results['Lifetime PNL (%)']:.2f}% ({analysis_results['Lifetime PNL (USD)']:.2f} USD)")
 else:
     st.write("Please upload a CSV file to get started.")
