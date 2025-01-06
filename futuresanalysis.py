@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-# Function to calculate PNL analysis
-def calculate_pnl_analysis(df):
+# Function to calculate PNL and Fee analysis
+def calculate_pnl_and_fee_analysis(df):
     # Normalize column names
     df.columns = df.columns.str.strip()  # Remove extra spaces
     df.columns = df.columns.str.lower()  # Convert to lowercase
@@ -39,7 +39,23 @@ def calculate_pnl_analysis(df):
     
     # Calculate Profit/Loss Ratio
     profit_loss_ratio = abs(average_profit / average_loss) if average_loss != 0 else 0
-    
+
+    # Calculate Funding Fees
+    if 'funding_fee' in df.columns:
+        total_funding_fee = df['funding_fee'].sum()
+        total_received_funding_fee = df[df['funding_fee'] > 0]['funding_fee'].sum()
+        total_paid_funding_fee = df[df['funding_fee'] < 0]['funding_fee'].sum()
+    else:
+        total_funding_fee = 0
+        total_received_funding_fee = 0
+        total_paid_funding_fee = 0
+
+    # Calculate Transaction Fees
+    if 'fee' in df.columns:
+        total_transaction_fee = df['fee'].sum()
+    else:
+        total_transaction_fee = 0
+
     # Return the results as a dictionary
     return {
         "Total Profit": total_profit,
@@ -52,11 +68,15 @@ def calculate_pnl_analysis(df):
         "Breakeven Days": breakeven_days,
         "Average Profit": average_profit,
         "Average Loss": average_loss,
-        "Profit/Loss Ratio": profit_loss_ratio
+        "Profit/Loss Ratio": profit_loss_ratio,
+        "Total Funding Fee": total_funding_fee,
+        "Total Received Funding Fee": total_received_funding_fee,
+        "Total Paid Funding Fee": total_paid_funding_fee,
+        "Total Transaction Fee": total_transaction_fee
     }
 
 # Streamlit App
-st.title("Future Trade PNL Analysis")
+st.title("Future Trade PNL and Fee Analysis")
 
 # File upload
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
@@ -69,21 +89,28 @@ if uploaded_file is not None:
     st.write("Uploaded Data:")
     st.write(df)
     
-    # Calculate PNL Analysis
-    pnl_analysis = calculate_pnl_analysis(df)
+    # Calculate PNL and Fee Analysis
+    analysis_results = calculate_pnl_and_fee_analysis(df)
     
     # Display PNL Analysis
     st.write("### Profit and Loss Analysis")
-    st.write(f"**Total Profit:** {pnl_analysis['Total Profit']:.2f} USD")
-    st.write(f"**Total Loss:** {pnl_analysis['Total Loss']:.2f} USD")
-    st.write(f"**Net Profit/Loss:** {pnl_analysis['Net Profit/Loss']:.2f} USD")
-    st.write(f"**Trading Volume:** {pnl_analysis['Trading Volume']:.2f}")
-    st.write(f"**Win Rate:** {pnl_analysis['Win Rate']:.2f} %")
-    st.write(f"**Winning Days:** {pnl_analysis['Winning Days']} Days")
-    st.write(f"**Losing Days:** {pnl_analysis['Losing Days']} Days")
-    st.write(f"**Breakeven Days:** {pnl_analysis['Breakeven Days']} Days")
-    st.write(f"**Average Profit:** {pnl_analysis['Average Profit']:.2f} USD")
-    st.write(f"**Average Loss:** {pnl_analysis['Average Loss']:.2f} USD")
-    st.write(f"**Profit/Loss Ratio:** {pnl_analysis['Profit/Loss Ratio']:.2f}")
+    st.write(f"**Total Profit:** {analysis_results['Total Profit']:.2f} USD")
+    st.write(f"**Total Loss:** {analysis_results['Total Loss']:.2f} USD")
+    st.write(f"**Net Profit/Loss:** {analysis_results['Net Profit/Loss']:.2f} USD")
+    st.write(f"**Trading Volume:** {analysis_results['Trading Volume']:.2f}")
+    st.write(f"**Win Rate:** {analysis_results['Win Rate']:.2f} %")
+    st.write(f"**Winning Days:** {analysis_results['Winning Days']} Days")
+    st.write(f"**Losing Days:** {analysis_results['Losing Days']} Days")
+    st.write(f"**Breakeven Days:** {analysis_results['Breakeven Days']} Days")
+    st.write(f"**Average Profit:** {analysis_results['Average Profit']:.2f} USD")
+    st.write(f"**Average Loss:** {analysis_results['Average Loss']:.2f} USD")
+    st.write(f"**Profit/Loss Ratio:** {analysis_results['Profit/Loss Ratio']:.2f}")
+
+    # Display Funding and Transaction Fee Analysis
+    st.write("### Funding and Transaction Fee Analysis")
+    st.write(f"**Total Funding Fee:** {analysis_results['Total Funding Fee']:.2f} USD")
+    st.write(f"**Total Received Funding Fee:** {analysis_results['Total Received Funding Fee']:.2f} USD")
+    st.write(f"**Total Paid Funding Fee:** {analysis_results['Total Paid Funding Fee']:.2f} USD")
+    st.write(f"**Total Transaction Fee:** {analysis_results['Total Transaction Fee']:.2f} USD")
 else:
     st.write("Please upload a CSV file to get started.")
