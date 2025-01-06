@@ -3,20 +3,17 @@ import pandas as pd
 import plotly.express as px
 
 # Set page configuration
-st.set_page_config(page_title="Futures PNL Analysis", layout="wide")
+st.set_page_config(page_title="Binance Futures PNL Analysis", layout="wide")
 
-# Title and subtitle
-st.title("Futures Trade PNL Analysis")
-st.subheader("Analyze your trading performance with this interactive tool.")
-
-# Instructions and sample CSV download
-st.markdown("[Download Sample CSV](sample_trades.csv)")
+# Title
+st.title("Binance Futures PNL Analysis")
 
 # Upload CSV file
 uploaded_file = st.file_uploader("Upload your trade data CSV", type=["csv"])
-
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
+    
+    # Data cleaning and transformation
     df['Trade Time'] = pd.to_datetime(df['Trade Time'])
     df['PNL'] = df.apply(
         lambda row: (row['Exit Price'] - row['Entry Price']) * row['Quantity'] * row['Leverage']
@@ -54,6 +51,10 @@ if uploaded_file is not None:
     fig_pie = px.pie(values=[profit, loss], names=['Profit', 'Loss'], title='Profit vs. Loss')
     st.plotly_chart(fig_pie)
     
+    st.subheader('PNL by Symbol')
+    fig_symbol = px.bar(filtered_df.groupby('Symbol')['PNL'].sum().reset_index(), x='Symbol', y='PNL', title='PNL by Symbol')
+    st.plotly_chart(fig_symbol)
+    
     # Key Metrics
     st.subheader('Key Metrics')
     total_pnl = filtered_df['PNL'].sum()
@@ -62,9 +63,5 @@ if uploaded_file is not None:
     st.write(f'Total PNL: ${total_pnl:.2f}')
     st.write(f'Average PNL: ${average_pnl:.2f}')
     st.write(f'Win/Loss Ratio: {win_loss_ratio:.2f}')
-    
-    # Trade Details
-    st.subheader('Trade Details')
-    st.dataframe(filtered_df)
 else:
     st.info('Please upload a CSV file.')
