@@ -65,10 +65,9 @@ if uploaded_file is not None:
     # Read the CSV file with encoding='utf-8-sig' to handle BOM
     df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
     
-    # Display the uploaded data and column names for debugging
+    # Display the uploaded data
     st.write("Uploaded Data:")
     st.write(df)
-    st.write("Columns in the uploaded file:", df.columns.tolist())
     
     # Calculate PNL Analysis
     pnl_analysis = calculate_pnl_analysis(df)
